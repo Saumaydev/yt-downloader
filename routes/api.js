@@ -57,28 +57,42 @@ router.post("/info", async (req, res) => {
     try {
         await ensureYtDlp();
 
-        const { url } = req.body;
+        let { url } = req.body;
+
+        // 🔥 remove playlist part (IMPORTANT)
+        url = url.split("&")[0];
 
         execFile(YTDLP_PATH, [
             "--dump-single-json",
             "--no-warnings",
             "--no-check-certificates",
+
+            // 🔥 Anti-bot bypass
+            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "--referer", "https://www.youtube.com/",
+            "--extractor-args", "youtube:player_client=android",
+
             url
-        ], (err, stdout) => {
+        ], (err, stdout, stderr) => {
             if (err) {
-                console.error(err);
+                console.error("YT ERROR:", stderr || err.message);
                 return res.status(500).json({ error: "Failed to fetch info" });
             }
 
-            res.json(JSON.parse(stdout));
+            try {
+                const data = JSON.parse(stdout);
+                res.json(data);
+            } catch (e) {
+                console.error("PARSE ERROR:", e);
+                res.status(500).json({ error: "Parse failed" });
+            }
         });
 
     } catch (err) {
-        console.error(err);
+        console.error("SETUP ERROR:", err);
         res.status(500).json({ error: "Setup failed" });
     }
 });
-
 // ─────────────────────────────────────────────
 // 📥 DOWNLOAD VIDEO / AUDIO
 // ─────────────────────────────────────────────
