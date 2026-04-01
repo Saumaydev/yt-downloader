@@ -2,20 +2,21 @@ const express = require("express");
 const router = express.Router();
 const fs = require("fs");
 const path = require("path");
+const axios = require("axios");
 const { v4: uuidv4 } = require("uuid");
+const { execFile } = require("child_process");
 
-// ✅ NEW (cross-platform)
-const ytdlp = require("yt-dlp-exec");
-const ffmpegPath = require("ffmpeg-static");
+// 📍 Path for yt-dlp (downloaded at runtime)
+const YTDLP_PATH = path.join(__dirname, "..", "yt-dlp");
 
-// Downloads folder
+// 📁 Downloads folder
 const DOWNLOADS = path.join(__dirname, "..", "downloads");
 if (!fs.existsSync(DOWNLOADS)) fs.mkdirSync(DOWNLOADS, { recursive: true });
 
-// Active downloads
+// 🔄 Active downloads
 const active = new Map();
 
-// MIME types
+// 🎥 MIME types
 const MIMES = {
     ".mp4": "video/mp4",
     ".webm": "video/webm",
@@ -23,127 +24,136 @@ const MIMES = {
     ".m4a": "audio/mp4",
 };
 
-// ── GET VIDEO INFO ──
+// ─────────────────────────────────────────────
+// 🔥 AUTO DOWNLOAD yt-dlp
+// ─────────────────────────────────────────────
+async function ensureYtDlp() {
+    if (!fs.existsSync(YTDLP_PATH)) {
+        console.log("Downloading yt-dlp...");
+
+        const response = await axios({
+            method: "GET",
+            url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp",
+            responseType: "stream",
+        });
+
+        const writer = fs.createWriteStream(YTDLP_PATH);
+        response.data.pipe(writer);
+
+        await new Promise((resolve, reject) => {
+            writer.on("finish", resolve);
+            writer.on("error", reject);
+        });
+
+        fs.chmodSync(YTDLP_PATH, "755");
+        console.log("yt-dlp ready ✅");
+    }
+}
+
+// ─────────────────────────────────────────────
+// 🎬 GET VIDEO INFO
+// ─────────────────────────────────────────────
 router.post("/info", async (req, res) => {
-    const { url } = req.body;
-    if (!url) return res.status(400).json({ error: "URL required" });
-
     try {
-        const info = await ytdlp(url, {
-            dumpSingleJson: true,
-            noWarnings: true,
-            noCheckCertificates: true,
-        });
+        await ensureYtDlp();
 
-        const videos = [];
-        const audios = [];
+        const { url } = req.body;
 
-        (info.formats || []).forEach((f) => {
-            const entry = {
-                id: f.format_id,
-                ext: f.ext,
-                w: f.width,
-                h: f.height,
-                size: f.filesize || f.filesize_approx || 0,
-            };
-            if (f.vcodec !== "none") videos.push(entry);
-            else if (f.acodec !== "none") audios.push(entry);
-        });
+        execFile(YTDLP_PATH, [
+            "--dump-single-json",
+            "--no-warnings",
+            "--no-check-certificates",
+            url
+        ], (err, stdout) => {
+            if (err) {
+                console.error(err);
+                return res.status(500).json({ error: "Failed to fetch info" });
+            }
 
-        const presets = [
-            { label: "1080p", h: 1080 },
-            { label: "720p", h: 720 },
-            { label: "480p", h: 480 },
-            { label: "360p", h: 360 },
-        ]
-        .map(r => {
-            const match = videos.find(v => v.h === r.h);
-            if (!match) return null;
-            return {
-                type: "video",
-                label: r.label,
-                formatId: match.id,
-                ext: "mp4",
-            };
-        })
-        .filter(Boolean);
-
-        // Audio presets
-        presets.push({
-            type: "audio",
-            label: "MP3",
-            ext: "mp3",
-        });
-
-        res.json({
-            title: info.title,
-            thumb: info.thumbnail,
-            duration: info.duration,
-            presets,
+            res.json(JSON.parse(stdout));
         });
 
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: "Failed to fetch info" });
+        res.status(500).json({ error: "Setup failed" });
     }
 });
 
-// ── START DOWNLOAD ──
+// ─────────────────────────────────────────────
+// 📥 DOWNLOAD VIDEO / AUDIO
+// ─────────────────────────────────────────────
 router.post("/download", async (req, res) => {
     const { url, preset } = req.body;
     if (!url) return res.status(400).json({ error: "URL required" });
 
-    const id = uuidv4().slice(0, 8);
-    const output = path.join(DOWNLOADS, `${id}.%(ext)s`);
-
-    active.set(id, { progress: 0, status: "starting" });
-
     try {
-        let options = {
-            output,
-            noWarnings: true,
-            noCheckCertificates: true,
-        };
+        await ensureYtDlp();
+
+        const id = uuidv4().slice(0, 8);
+        const output = path.join(DOWNLOADS, `${id}.%(ext)s`);
+
+        active.set(id, { progress: 0, status: "starting" });
+
+        let args = [
+            "--no-playlist",
+            "--no-warnings",
+            "--no-check-certificates",
+            "-o", output,
+        ];
 
         if (preset?.type === "audio") {
-            options.extractAudio = true;
-            options.audioFormat = preset.ext;
+            args.push(
+                "-x",
+                "--audio-format", preset.ext || "mp3"
+            );
         } else {
-            options.format = preset?.formatId
-                ? `${preset.formatId}+bestaudio/best`
-                : "best";
-            options.mergeOutputFormat = "mp4";
+            args.push(
+                "-f", preset?.formatId
+                    ? `${preset.formatId}+bestaudio/best`
+                    : "best",
+                "--merge-output-format", "mp4"
+            );
         }
 
-        await ytdlp(url, options);
+        args.push(url);
 
-        // Find file
-        const files = fs.readdirSync(DOWNLOADS).filter(f => f.startsWith(id));
-        const filename = files[0];
+        execFile(YTDLP_PATH, args, (err) => {
+            if (err) {
+                console.error(err);
+                active.set(id, { status: "error" });
+                return res.status(500).json({ error: "Download failed" });
+            }
 
-        active.set(id, {
-            progress: 100,
-            status: "complete",
-            filename,
+            const files = fs.readdirSync(DOWNLOADS).filter(f => f.startsWith(id));
+            const filename = files[0];
+
+            active.set(id, {
+                progress: 100,
+                status: "complete",
+                filename,
+            });
+
+            res.json({ id });
         });
-
-        res.json({ id });
 
     } catch (err) {
         console.error(err);
-        active.set(id, { status: "error" });
-        res.status(500).json({ error: "Download failed" });
+        res.status(500).json({ error: "Download setup failed" });
     }
 });
 
-// ── PROGRESS ──
+// ─────────────────────────────────────────────
+// 📊 PROGRESS
+// ─────────────────────────────────────────────
 router.get("/progress/:id", (req, res) => {
     const data = active.get(req.params.id);
     if (!data) return res.status(404).json({ error: "Not found" });
     res.json(data);
 });
 
-// ── SERVE FILE ──
+// ─────────────────────────────────────────────
+// 📁 SERVE FILE
+// ─────────────────────────────────────────────
 router.get("/file/:filename", (req, res) => {
     const filepath = path.join(DOWNLOADS, req.params.filename);
 
