@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediaFlow</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<canvas id="sphere"></canvas>
+
+<div class="app">
+
+    <!-- HEADER -->
+    <header class="head">
+        <div class="logo">
+            <div class="logo-dot"></div>
+            <span>MediaFlow</span>
+        </div>
+        <div class="status"><span class="live"></span>Ready</div>
+    </header>
+
+    <!-- STEP 1: INPUT -->
+    <section class="step active" id="s1">
+        <div class="input-box" id="inputBox">
+            <svg class="input-ico" width="18" height="18" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+                <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+            </svg>
+            <input id="url" type="text" placeholder="Paste YouTube link..."
+                   autocomplete="off" spellcheck="false">
+            <button class="x-btn" id="clearBtn">✕</button>
+        </div>
+        <button class="btn-main" id="fetchBtn" disabled>
+            <span class="btn-txt">Fetch</span>
+            <span class="btn-load"><span class="spin"></span>Loading</span>
+        </button>
+        <div class="err" id="err"></div>
+    </section>
+
+    <!-- STEP 2: INFO -->
+    <section class="step" id="s2">
+        <div class="vid-card" id="vidCard">
+            <div class="thumb-wrap">
+                <img id="thumb" src="" alt="">
+                <span class="dur" id="dur"></span>
+            </div>
+            <div class="vid-info">
+                <h3 id="title"></h3>
+                <p class="meta" id="meta"></p>
+            </div>
+        </div>
+
+        <div class="fmt-label">Select format</div>
+        <div class="fmt-grid" id="fmtGrid"></div>
+
+        <button class="btn-ghost" id="backBtn">← Back</button>
+    </section>
+
+    <!-- STEP 3: DOWNLOAD -->
+    <section class="step" id="s3">
+        <div class="prog-card" id="progCard">
+            <div class="prog-top">
+                <div>
+                    <div class="prog-status" id="progStatus">Starting...</div>
+                    <div class="prog-sub" id="progSub"></div>
+                </div>
+                <div class="prog-pct" id="progPct">0%</div>
+            </div>
+            <div class="bar-track">
+                <div class="bar-fill" id="barFill"></div>
+            </div>
+            <div class="prog-stats">
+                <div class="pstat"><span class="pstat-l">Speed</span><span class="pstat-v" id="pSpeed">—</span></div>
+                <div class="pstat"><span class="pstat-l">ETA</span><span class="pstat-v" id="pEta">—</span></div>
+                <div class="pstat"><span class="pstat-l">Size</span><span class="pstat-v" id="pSize">—</span></div>
+            </div>
+        </div>
+
+        <div class="done-card hide" id="doneCard">
+            <div class="done-check">✓</div>
+            <h3>Done</h3>
+            <p class="done-name" id="doneName"></p>
+            <a class="btn-main btn-green" id="saveBtn" href="#" download>⬇ Save File</a>
+            <button class="btn-ghost" id="newBtn">↻ New Download</button>
+        </div>
+    </section>
+
+</div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>
